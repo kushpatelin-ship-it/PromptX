@@ -1,0 +1,13 @@
+{
+  "name": "promptai-workplus",
+  "version": "14.0.0",
+  "description": "PromptAI Work+ Employee Monitoring",
+  "main": "electron.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {
+    "electron": "^29.0.0",
+    "uiohook-napi": "^1.5.5"
+  }
+}

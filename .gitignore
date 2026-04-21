@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# PromptX runtime data
+.promptai-workplus/
+
+# Lock and PID files
+promptai.lock
+promptai.lock.dir/
+promptai.pid
+
+# Electron build output
+dist/
+out/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Environment
+.env
+.env.local

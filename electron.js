@@ -15,113 +15,20 @@ var cp = require('child_process');
 var PORT = 4000;
 var win = null;
 var tray = null;
-var agentProc = null;
 var _dashLoaded = false;
-var _agentSpawned = false; // track if WE spawned the agent
 
 app.setPath('userData', path.join(os.homedir(), '.promptai-workplus', 'electron'));
 app.commandLine.appendSwitch('no-sandbox');
 app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
 
-function findNode() {
+// Detect role
+function getRole() {
   try {
-    var found = cp.execSync('where node.exe', {windowsHide:true}).toString().trim().split('\n')[0].trim();
-    if (found && fs.existsSync(found)) return found;
-  } catch(_) {}
-  var candidates = [
-    path.join(process.env['ProgramFiles'] || 'C:\\Program Files', 'nodejs', 'node.exe'),
-    path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'nodejs', 'node.exe'),
-    path.join(process.env['APPDATA'] || '', 'nvm', 'current', 'node.exe'),
-    path.join(process.env['LOCALAPPDATA'] || '', 'Programs', 'nodejs', 'node.exe'),
-    'C:\\Program Files\\nodejs\\node.exe',
-  ];
-  for (var i = 0; i < candidates.length; i++) {
-    try { if (fs.existsSync(candidates[i])) return candidates[i]; } catch(_) {}
-  }
-  return 'node';
+    var f = path.join(os.homedir(), '.promptai-workplus', 'role.json');
+    return JSON.parse(fs.readFileSync(f, 'utf8')).role || 'parent';
+  } catch(_) { return 'parent'; }
 }
-
-// ── KEY FIX: Check if agent is running, wait up to 60s, only spawn if truly absent ──
-function startAgent() {
-  console.log('[ELECTRON] Checking if agent already running on port ' + PORT + '...');
-  waitForExternalAgent(60, function(running) {
-    if (running) {
-      console.log('[ELECTRON] Agent already running externally — NOT spawning duplicate');
-    } else {
-      console.log('[ELECTRON] Agent not found after 60s — spawning now');
-      spawnAgent();
-    }
-  });
-}
-
-function waitForExternalAgent(maxSeconds, cb) {
-  var elapsed = 0;
-  function check() {
-    var req = http.get('http://localhost:' + PORT + '/api/ping', function(res) {
-      res.resume();
-      if (res.statusCode === 200) {
-        cb(true); // agent is running
-      } else {
-        retry();
-      }
-    });
-    req.on('error', function() { retry(); });
-    req.setTimeout(1000, function() { req.destroy(); retry(); });
-  }
-  function retry() {
-    elapsed += 2;
-    if (elapsed >= maxSeconds) {
-      cb(false); // gave up
-    } else {
-      setTimeout(check, 2000);
-    }
-  }
-  check();
-}
-
-function spawnAgent() {
-  if (_agentSpawned) {
-    console.log('[ELECTRON] Already spawned agent once — skipping');
-    return;
-  }
-  _agentSpawned = true;
-  try {
-    var agentPath = path.join(__dirname, 'agent.js');
-    agentProc = cp.spawn('cmd.exe', ['/c', 'node', '"' + agentPath + '"'], {
-      cwd: __dirname,
-      windowsHide: true,
-      stdio: 'pipe',
-      detached: false,
-      env: Object.assign({}, process.env),
-      shell: true,
-    });
-    agentProc.stdout.on('data', function(d){ console.log('[AGENT]', d.toString().trim()); });
-    agentProc.stderr.on('data', function(d){ console.error('[AGENT ERR]', d.toString().trim()); });
-    agentProc.on('error', function(e) { console.error('[AGENT SPAWN ERROR]', e.message); });
-    agentProc.on('exit', function(code) {
-      console.log('[AGENT] exited with code:', code);
-      agentProc = null;
-      _agentSpawned = false;
-      if (!app.isQuitting && code !== 0 && code !== null) {
-        console.log('[AGENT] crashed — restarting in 3s');
-        _dashLoaded = false;
-        setTimeout(startAgent, 3000);
-      }
-    });
-  } catch(e) { console.error('[AGENT START ERROR]', e.message); _agentSpawned = false; }
-}
-
-function waitForAgent(cb) {
-  setTimeout(function ping() {
-    var req = http.get('http://localhost:' + PORT + '/api/ping', function(res) {
-      res.resume();
-      if (res.statusCode === 200) { cb(); }
-      else { setTimeout(ping, 2000); }
-    });
-    req.on('error', function() { setTimeout(ping, 2000); });
-    req.setTimeout(3000, function() { req.destroy(); setTimeout(ping, 2000); });
-  }, 1000);
-}
+var IS_CHILD = getRole() === 'child';
 
 function makeTrayIcon() {
   try {
@@ -147,38 +54,72 @@ var LOADING_HTML = '<html><head><style>' +
   '<div class=dots><div class=dot></div><div class=dot></div><div class=dot></div></div>' +
   '</body></html>';
 
+function waitForAgent(cb) {
+  setTimeout(function ping() {
+    var req = http.get('http://localhost:' + PORT + '/api/ping', function(res) {
+      res.resume();
+      if (res.statusCode === 200) { cb(); } else { setTimeout(ping, 2000); }
+    });
+    req.on('error', function() { setTimeout(ping, 2000); });
+    req.setTimeout(3000, function() { req.destroy(); setTimeout(ping, 2000); });
+  }, 1000);
+}
+
 function createWindow() {
   if (win) { win.focus(); return; }
+
   win = new BrowserWindow({
-    width: 1400, height: 900, minWidth: 1000, minHeight: 650,
-    title: 'Prompt AI Work+',
+    width: IS_CHILD ? 1280 : 1400,
+    height: IS_CHILD ? 820 : 900,
+    minWidth: IS_CHILD ? 900 : 1000,
+    minHeight: IS_CHILD ? 600 : 650,
+    title: IS_CHILD ? 'Work+' : 'Prompt AI Work+',
     backgroundColor: '#07090f',
     autoHideMenuBar: true,
     show: false,
     icon: makeTrayIcon(),
     webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: false },
   });
+
   win.setMenu(null);
+
+  // Employee: block dev tools and context menu
+  if (IS_CHILD) {
+    win.webContents.on('context-menu', function(e) { e.preventDefault(); });
+    win.webContents.on('before-input-event', function(e, input) {
+      if (input.key === 'F12' ||
+        (input.control && input.shift && (input.key === 'I' || input.key === 'J')) ||
+        (input.control && (input.key === 'u' || input.key === 'U'))) {
+        e.preventDefault();
+      }
+    });
+  } else {
+    win.webContents.on('before-input-event', function(e, input) {
+      if (input.key === 'F12') win.webContents.openDevTools();
+    });
+  }
+
   win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(LOADING_HTML));
   win.once('ready-to-show', function() { win.show(); });
-  win.webContents.on('before-input-event', function(e, input) {
-    if (input.key === 'F12') win.webContents.openDevTools();
-  });
+
   win.webContents.on('will-navigate', function(e, url) {
     if (!url.startsWith('http://localhost:' + PORT)) {
       e.preventDefault();
       shell.openExternal(url);
     }
   });
+
   waitForAgent(function() {
     if (win && !_dashLoaded) {
       _dashLoaded = true;
       win.loadURL('http://localhost:' + PORT);
     }
   });
+
   win.webContents.setWindowOpenHandler(function(ev) {
     shell.openExternal(ev.url); return { action: 'deny' };
   });
+
   win.on('close', function(e) {
     if (!app.isQuitting) { e.preventDefault(); win.hide(); }
   });
@@ -188,10 +129,10 @@ function createWindow() {
 function createTray() {
   try {
     tray = new Tray(makeTrayIcon());
-    tray.setToolTip('Prompt AI Work+');
+    tray.setToolTip(IS_CHILD ? 'Work+' : 'Prompt AI Work+');
     tray.setContextMenu(Menu.buildFromTemplate([
-      { label: 'Open Dashboard', click: function() { if(win){win.show();win.focus();}else{createWindow();} } },
-      { label: 'Hide to Tray', click: function() { if(win) win.hide(); } },
+      { label: 'Open', click: function() { if(win){win.show();win.focus();}else{createWindow();} } },
+      { label: 'Hide', click: function() { if(win) win.hide(); } },
       { type: 'separator' },
       { label: 'Quit', click: function() { app.isQuitting = true; app.quit(); } },
     ]));
@@ -204,13 +145,9 @@ function createTray() {
 app.whenReady().then(function() {
   app.setAppUserModelId('com.promptai.workplus');
   createTray();
-  startAgent();
   createWindow();
 });
 
-app.on('before-quit', function() {
-  app.isQuitting = true;
-  if (agentProc) { try { agentProc.kill(); } catch(_) {} }
-});
+app.on('before-quit', function() { app.isQuitting = true; });
 app.on('window-all-closed', function() {});
 app.on('activate', function() { if (!win) createWindow(); else win.show(); });

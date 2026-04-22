@@ -86,89 +86,7 @@ function _rebuildPages() {
 }
 
 let _cpus0 = os.cpus();
-let _bossReplies = {};
-let _threads = {};
-function _threadGet(h){ if(!_threads[h])_threads[h]=[]; return _threads[h]; }
-function _threadPost(h,from,msg){
-  const t=_threadGet(h);
-  const m={id:Date.now().toString(36)+Math.random().toString(36).slice(2,4),from,message:msg,ts:new Date().toISOString()};
-  t.push(m); if(t.length>100)_threads[h]=t.slice(-100);
-  return m;
-}
-
-// ── AI Tools store — boss can add/edit/remove per department ──────────────────
-const fs_tools = require('fs');
-const path_tools = require('path');
-const TOOLS_FILE = path_tools.join(require('os').homedir(), '.promptai-workplus', 'tools.json');
-
-const DEFAULT_TOOLS = {
-  engineering: [
-    {id:'e1',name:'Claude',desc:'AI coding assistant. Write, debug and explain code in any language.',url:'https://claude.ai',icon:'🤖',badge:'Recommended',enabled:true},
-    {id:'e2',name:'GitHub Copilot',desc:'AI pair programmer in VS Code. Autocompletes code in real time.',url:'https://github.com/features/copilot',icon:'💻',badge:'Popular',enabled:true},
-    {id:'e3',name:'Cursor',desc:'AI-first code editor. Chat with your codebase and generate features.',url:'https://cursor.sh',icon:'⚡',badge:'Hot',enabled:true},
-    {id:'e4',name:'Perplexity AI',desc:'AI search for researching docs, APIs and technical topics fast.',url:'https://perplexity.ai',icon:'🔍',badge:'',enabled:true},
-    {id:'e5',name:'v0 by Vercel',desc:'Generate React UI components from plain text descriptions.',url:'https://v0.dev',icon:'🎨',badge:'',enabled:true},
-    {id:'e6',name:'Pieces for Devs',desc:'AI snippet manager. Save and find code snippets intelligently.',url:'https://pieces.app',icon:'🧩',badge:'',enabled:true},
-  ],
-  sales: [
-    {id:'s1',name:'Claude',desc:'Write outreach emails, summarize calls and craft follow-up messages.',url:'https://claude.ai',icon:'🤖',badge:'Recommended',enabled:true},
-    {id:'s2',name:'Apollo.io',desc:'AI prospecting — find leads and write personalized outreach at scale.',url:'https://apollo.io',icon:'🎯',badge:'Popular',enabled:true},
-    {id:'s3',name:'Lavender',desc:'AI email coach. Scores your cold emails and suggests improvements.',url:'https://lavender.ai',icon:'✉️',badge:'Hot',enabled:true},
-    {id:'s4',name:'Gong AI',desc:'Records and analyzes sales calls. Shows what top reps do differently.',url:'https://gong.io',icon:'📞',badge:'',enabled:true},
-    {id:'s5',name:'Notion AI',desc:'AI writing inside Notion. Summarize notes and draft proposals fast.',url:'https://notion.so',icon:'📝',badge:'',enabled:true},
-    {id:'s6',name:'ChatGPT',desc:'General AI for brainstorming, writing and research tasks.',url:'https://chatgpt.com',icon:'💬',badge:'',enabled:true},
-  ],
-  operations: [
-    {id:'o1',name:'Claude',desc:'Analyze data, summarize reports and automate documentation tasks.',url:'https://claude.ai',icon:'🤖',badge:'Recommended',enabled:true},
-    {id:'o2',name:'Notion AI',desc:'AI writing in your workspace. Summarize meeting notes instantly.',url:'https://notion.so',icon:'📝',badge:'Popular',enabled:true},
-    {id:'o3',name:'Make',desc:'AI-enhanced automation. Connect apps and automate workflows visually.',url:'https://make.com',icon:'⚙️',badge:'',enabled:true},
-    {id:'o4',name:'ChatGPT',desc:'Draft SOPs, process docs and operational reports with AI.',url:'https://chatgpt.com',icon:'💬',badge:'',enabled:true},
-    {id:'o5',name:'Gamma',desc:'AI presentation maker. Turn bullet points into polished slides.',url:'https://gamma.app',icon:'📊',badge:'Hot',enabled:true},
-    {id:'o6',name:'Otter.ai',desc:'AI meeting transcription. Automatic notes and action items from calls.',url:'https://otter.ai',icon:'🎙️',badge:'',enabled:true},
-  ],
-  support: [
-    {id:'su1',name:'Claude',desc:'Draft support responses and explain technical issues in plain language.',url:'https://claude.ai',icon:'🤖',badge:'Recommended',enabled:true},
-    {id:'su2',name:'Intercom Fin',desc:'AI agent that resolves support tickets automatically.',url:'https://intercom.com',icon:'🎧',badge:'Popular',enabled:true},
-    {id:'su3',name:'Notion AI',desc:'Build and maintain your knowledge base with AI-assisted writing.',url:'https://notion.so',icon:'📝',badge:'',enabled:true},
-    {id:'su4',name:'Otter.ai',desc:'Transcribe support calls automatically. Never miss an action item.',url:'https://otter.ai',icon:'🎙️',badge:'',enabled:true},
-    {id:'su5',name:'ChatGPT',desc:'Research answers to complex customer questions quickly.',url:'https://chatgpt.com',icon:'💬',badge:'',enabled:true},
-    {id:'su6',name:'Grammarly',desc:'AI writing assistant. Make every support reply clear and professional.',url:'https://grammarly.com',icon:'✏️',badge:'',enabled:true},
-  ],
-  executive: [
-    {id:'ex1',name:'Claude',desc:'Strategic analysis, document drafting and executive briefings.',url:'https://claude.ai',icon:'🤖',badge:'Recommended',enabled:true},
-    {id:'ex2',name:'Perplexity AI',desc:'AI research engine. Get sourced answers to complex business questions.',url:'https://perplexity.ai',icon:'🔍',badge:'Popular',enabled:true},
-    {id:'ex3',name:'Gamma',desc:'AI-generated presentations. Create board decks from bullet points.',url:'https://gamma.app',icon:'📊',badge:'Hot',enabled:true},
-    {id:'ex4',name:'Otter.ai',desc:'AI meeting notes. Capture decisions and action items automatically.',url:'https://otter.ai',icon:'🎙️',badge:'',enabled:true},
-    {id:'ex5',name:'ChatGPT',desc:'General AI for research, writing and strategic thinking.',url:'https://chatgpt.com',icon:'💬',badge:'',enabled:true},
-    {id:'ex6',name:'Notion AI',desc:'AI workspace for managing projects, docs and team updates.',url:'https://notion.so',icon:'📝',badge:'',enabled:true},
-  ],
-  marketing: [
-    {id:'m1',name:'Claude',desc:'Write copy, brainstorm campaigns and analyze marketing data.',url:'https://claude.ai',icon:'🤖',badge:'Recommended',enabled:true},
-    {id:'m2',name:'Jasper AI',desc:'AI marketing copy writer. Generate ads, emails and social posts.',url:'https://jasper.ai',icon:'✍️',badge:'Popular',enabled:true},
-    {id:'m3',name:'Canva AI',desc:'AI design tools. Create graphics, presentations and social content.',url:'https://canva.com',icon:'🎨',badge:'Hot',enabled:true},
-    {id:'m4',name:'Surfer SEO',desc:'AI SEO optimization. Write content that ranks on Google.',url:'https://surferseo.com',icon:'📈',badge:'',enabled:true},
-    {id:'m5',name:'Hootsuite AI',desc:'AI social media management. Schedule and optimize posts.',url:'https://hootsuite.com',icon:'📱',badge:'',enabled:true},
-    {id:'m6',name:'ChatGPT',desc:'General AI for brainstorming, writing and creative tasks.',url:'https://chatgpt.com',icon:'💬',badge:'',enabled:true},
-  ],
-};
-
-let _toolsStore = null;
-function loadTools() {
-  if (_toolsStore) return _toolsStore;
-  try {
-    if (fs_tools.existsSync(TOOLS_FILE)) {
-      _toolsStore = JSON.parse(fs_tools.readFileSync(TOOLS_FILE, 'utf8'));
-    }
-  } catch(_) {}
-  if (!_toolsStore) _toolsStore = JSON.parse(JSON.stringify(DEFAULT_TOOLS));
-  return _toolsStore;
-}
-function saveTools() {
-  try {
-    fs_tools.mkdirSync(path_tools.dirname(TOOLS_FILE), {recursive:true});
-    fs_tools.writeFileSync(TOOLS_FILE, JSON.stringify(_toolsStore, null, 2));
-  } catch(e) { log('TOOLS', 'Save error: '+e.message); }
-}
+let _bossReplies = {}; // hostname -> [{from,message,ts,id}]
 let _sysCache = {cpu:0,ram:0,ramUsedGB:0,ramTotalGB:0,cores:os.cpus().length,
   model:(os.cpus()[0]&&os.cpus()[0].model)||'',uptimeH:0,uptimeM:0,ts:Date.now(),procs:[]};
 
@@ -307,7 +225,7 @@ function startHTTP() {
     // Never block localhost or the boss PC's own IPs
     const ownIPs = _ownIPs;
     const isEmployeeIp = _employeeIPs.has(clientIp) && !ownIPs.has(clientIp);
-    const isEmpAllowedApi = ['/api/ping','/api/child-report','/api/create-alert','/api/privacy-mode','/api/messages','/api/tools'].includes(url);
+    const isEmpAllowedApi = ['/api/ping','/api/child-report','/api/create-alert','/api/privacy-mode'].includes(url);
     const isDashboardPage = ['/','/children','/timeline','/shifts','/alerts'].includes(url);
     const isRestrictedApi = !isEmpAllowedApi && ['/api/self','/api/children','/api/alerts','/api/day-summary','/api/timeline'].includes(url);
 
@@ -614,82 +532,6 @@ if (req.method==='GET'&&url==='/api/child-src'){
       return json(res,200,{replies});
     }
 
-    // ── AI Tools API — boss manages, employees read ───────────────────────────
-    if (url==='/api/tools') {
-      const qs3=Object.fromEntries(new URLSearchParams((req.url||'').split('?')[1]||''));
-      const dept=qs3.dept||'engineering';
-      const tools=loadTools();
-
-      if (req.method==='GET') {
-        const showAll=qs3.all==='1'&&_ownIPs.has(clientIp);
-        const deptTools=(tools[dept]||[]).filter(t=>showAll||t.enabled!==false);
-        return json(res,200,{dept,tools:deptTools});
-      }
-
-      // Boss-only routes below
-      if (!_ownIPs.has(clientIp)) return json(res,403,{ok:false,error:'Boss only'});
-
-      if (req.method==='POST') {
-        let b='';req.on('data',c=>b+=c);req.on('end',()=>{
-          try {
-            const d=JSON.parse(b||'{}');
-            const action=d.action;
-            const t=loadTools();
-            if (!t[dept]) t[dept]=[];
-
-            if (action==='add') {
-              const newTool={id:dept[0]+Date.now().toString(36),name:d.name||'New Tool',
-                desc:d.desc||'',url:d.url||'#',icon:d.icon||'🔧',badge:d.badge||'',enabled:true};
-              t[dept].push(newTool);
-              _toolsStore=t; saveTools();
-              return json(res,200,{ok:true,tool:newTool});
-            }
-            if (action==='edit') {
-              const idx=t[dept].findIndex(x=>x.id===d.id);
-              if (idx<0) return json(res,404,{ok:false,error:'Tool not found'});
-              t[dept][idx]={...t[dept][idx],...d, action:undefined};
-              _toolsStore=t; saveTools();
-              return json(res,200,{ok:true});
-            }
-            if (action==='delete') {
-              t[dept]=t[dept].filter(x=>x.id!==d.id);
-              _toolsStore=t; saveTools();
-              return json(res,200,{ok:true});
-            }
-            if (action==='toggle') {
-              const idx=t[dept].findIndex(x=>x.id===d.id);
-              if (idx>=0){t[dept][idx].enabled=!t[dept][idx].enabled;}
-              _toolsStore=t; saveTools();
-              return json(res,200,{ok:true});
-            }
-            if (action==='reset') {
-              t[dept]=JSON.parse(JSON.stringify(DEFAULT_TOOLS[dept]||[]));
-              _toolsStore=t; saveTools();
-              return json(res,200,{ok:true});
-            }
-            return json(res,400,{ok:false,error:'Unknown action'});
-          } catch(e){return json(res,500,{ok:false,error:e.message});}
-        });return;
-      }
-    }
-
-    if (url==='/api/messages') {
-      const qs2=Object.fromEntries(new URLSearchParams((req.url||'').split('?')[1]||''));
-      let mHost=qs2.host||'';
-      if(!mHost||mHost===clientIp){const byIp=Array.from(reg.values()).find(e=>e.ip===clientIp);if(byIp&&byIp.hostname)mHost=byIp.hostname;else mHost=qs2.host||clientIp;}
-      if(req.method==='GET'){return json(res,200,{messages:_threadGet(mHost),hostname:mHost});}
-      if(req.method==='POST'){let b='';req.on('data',c=>b+=c);req.on('end',()=>{
-        try{
-          const d=JSON.parse(b||'{}');const msg=(d.message||'').trim();
-          if(!msg)return json(res,400,{ok:false,error:'empty'});
-          const from=_ownIPs.has(clientIp)?'Boss':mHost;
-          const m=_threadPost(mHost,from,msg);
-          if(!_ownIPs.has(clientIp)){store.addAlert({id:'msg-'+m.id,ts:m.ts,type:'message',hostname:mHost,message:'Message from '+mHost+': '+msg,severity:'info',dismissed:false});}
-          return json(res,200,{ok:true,msg:m});
-        }catch(e){return json(res,500,{ok:false,error:e.message});}
-      });return;}
-    }
-
     if (req.method==='POST'&&url==='/api/dismiss-alert') {
       let body='';
       req.on('data',c=>body+=c);
@@ -866,7 +708,6 @@ if (req.method==='GET'&&url==='/api/child-src'){
     if(url==='/children'){res.writeHead(200,{'Content-Type':H});return res.end(dash.childrenPage());}
     if(url==='/timeline'){res.writeHead(200,{'Content-Type':H});return res.end(dash.timelinePage());}
     if(url==='/shifts')  {res.writeHead(200,{'Content-Type':H});return res.end(dash.shiftsPage());}
-    if(url==='/tools'){res.writeHead(200,{'Content-Type':H});return res.end(dash.toolsPage());}
     if(url==='/alerts')  {var _ap=dash.alertsPage(store.getAlerts(true)).replace('__INITIAL_ALERTS__',JSON.stringify(store.getAlerts(true)));res.writeHead(200,{'Content-Type':H});return res.end(_ap);}
 
     res.writeHead(404);res.end('Not found');
